@@ -10,15 +10,6 @@ function generateOrderId() {
   return `ORD_${ts}_${rand}`;
 }
 
-/**
- * Replace these with your provider endpoints & required request shape.
- * We're using environment variables to keep secrets out of source.
- *
- * Required environment variables (set in Netlify site settings -> Build & deploy -> Environment):
- * - PAYMENT_API_BASE      e.g. https://api.cashfree.com
- * - PAYMENT_API_KEY       or APP_ID / SECRET as required
- * - PAYMENT_API_SECRET    (if needed)
- */
 const base = process.env.CF_BASE;
 const cashfree_api_key = process.env.CF_API_KEY;
 const cashfree_api_secret = process.env.CF_API_SECRET;
@@ -68,12 +59,6 @@ exports.payments = async (event, context) => {
     return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  // CORS headers if needed (adjust allowed origin)
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": process.env.ALLOWED_ORIGIN || "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-  };
-
   try {
     const reqBody = event.body ? JSON.parse(event.body) : {};
     // You can accept amount/orderId from client or compute server-side:
@@ -118,7 +103,6 @@ exports.payments = async (event, context) => {
 
       return {
         statusCode: 200,
-        headers: corsHeaders,
         body: JSON.stringify({
           payment_session_id: data.payment_session_id || session,
           order_id: data.order_id || orderId,
@@ -129,7 +113,6 @@ exports.payments = async (event, context) => {
       console.error("Failed to create payment order", data);
       return {
         statusCode: 500,
-        headers: corsHeaders,
         body: JSON.stringify({
           error: "Failed to create payment session",
           details: data,
@@ -145,7 +128,6 @@ exports.payments = async (event, context) => {
     );
     return {
       statusCode: 500,
-      headers: corsHeaders,
       body: JSON.stringify({ error: err.message || "Unknown error" }),
     };
   }
