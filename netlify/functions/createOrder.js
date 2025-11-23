@@ -24,7 +24,7 @@ const cashfree_api_key = process.env.CF_API_KEY;
 const cashfree_api_secret = process.env.CF_API_SECRET;
 
 async function createOrder(payload) {
-  if (!base) throw new Error("PAYMENT_API_BASE is not set");
+  if (!base) throw new Error("base is not set");
 
   // Example URL: change to provider's "create order" endpoint
   const url = `${base}/orders`;
@@ -41,7 +41,7 @@ async function createOrder(payload) {
 }
 
 async function getOrder(paymentSessionId, paymentMethod) {
-  if (!base) throw new Error("PAYMENT_API_BASE is not set");
+  if (!base) throw new Error("base is not set");
 
   // Example URL: change to provider's "get payment session" endpoint
   const url = `${base}/payment-sessions/${paymentSessionId}`;
@@ -62,7 +62,7 @@ async function getOrder(paymentSessionId, paymentMethod) {
   return resp;
 }
 
-exports.handler = async (event, context) => {
+exports.payments = async (event, context) => {
   // Allow only POST
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: "Method Not Allowed" };
