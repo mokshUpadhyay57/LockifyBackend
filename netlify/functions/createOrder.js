@@ -1,42 +1,62 @@
 // netlify/functions/createOrder.js
-const https = require("https");
-const axios = require("axios");
+const axios = require("axios"); // make sure axios is in dependencies
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "https://lockify.co.in";
 
-// ⭐ Keep-alive agent for fast repeated HTTPS calls
-const keepAliveAgent = new https.Agent({
-  keepAlive: true,
-  maxSockets: 20, // Perfect for small/medium traffic
-  maxFreeSockets: 10,
-  timeout: 10000, // Close sockets after 10s idle
-});
-
-// ⭐ Axios instance using keep-alive
-const client = axios.create({
-  httpsAgent: keepAliveAgent,
-  timeout: 10000, // API timeout
-});
-
-// ⭐ CORS Headers
 const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN, // exact origin preferred
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, X-Requested-With",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Credentials": "true",
 };
+
+const base = process.env.CF_BASE_URL;
+const cashfree_api_key = process.env.CF_API_KEY;
+const cashfree_api_secret = process.env.CF_API_SECRET;
 
 function generateOrderId() {
   return `ORD_${Date.now()}_${Math.floor(Math.random() * 9000 + 1000)}`;
 }
 
+/* NOTE: adapt these helper URLs/headers to your payment provider */
+async function createOrder(payload) {
+  if (!base) throw new Error("PAYMENT_API_BASE not set");
+  const url = `${base}/orders`; // ensure no trailing slash issues
+  const headers = {
+    "x-client-id": cashfree_api_key,
+    "x-client-secret": cashfree_api_secret,
+    "x-api-version": "2025-01-01",
+    "Content-Type": "application/json",
+  };
+  return axios.post(url, payload, { headers });
+}
+
+async function getOrder(paymentSessionId, paymentMethod) {
+  if (!base) throw new Error("PAYMENT_API_BASE not set");
+  // adapt if provider expects GET vs POST
+  const url = `${base}/orders/sessions`;
+  const headers = {
+    "x-client-id": cashfree_api_key,
+    "x-client-secret": cashfree_api_secret,
+    "x-api-version": "2025-01-01",
+    "Content-Type": "application/json",
+  };
+  return axios.post(
+    url,
+    { payment_session_id: paymentSessionId, payment_method: paymentMethod },
+    { headers }
+  );
+}
+
+/* Exported handler (Netlify expects exports.handler) */
 exports.handler = async (event, context) => {
-  // Preflight (browser OPTIONS)
+  // Always answer preflight so browser can continue
   if (event.httpMethod === "OPTIONS") {
     return { statusCode: 204, headers: corsHeaders, body: "" };
   }
 
-  // Only POST allowed
+  // enforce POST
   if (event.httpMethod !== "POST") {
     return {
       statusCode: 405,
@@ -45,82 +65,77 @@ exports.handler = async (event, context) => {
     };
   }
 
-  const start = Date.now();
-
   try {
     const reqBody = event.body ? JSON.parse(event.body) : {};
-    const orderAmount = reqBody.amount || 1000;
+    const orderId = generateOrderId();
 
-    // Input validation
-    if (orderAmount <= 0) {
-      return { statusCode: 400, headers: corsHeaders, body: "Invalid amount" };
-    }
-
-    // Environment
-    const baseUrl = process.env.CF_BASE_URL;
-    const clientId = process.env.CF_API_KEY;
-    const clientSecret = process.env.CF_API_SECRET;
-
-    if (!baseUrl || !clientId || !clientSecret) {
-      throw new Error("Cashfree env vars missing");
-    }
-
-    // Prepare payload
     const payload = {
-      order_id: generateOrderId(),
-      order_amount: orderAmount,
-      order_currency: "INR",
-      customer_details: {
+      order_id: orderId,
+      order_amount: reqBody.amount || 1000,
+      order_currency: reqBody.currency || "INR",
+      customer_details: reqBody.customer_details || {
         customer_id: reqBody.customer_id || "CUST001",
-        customer_name: reqBody.customer_name || "User",
+        customer_name: reqBody.customer_name || "John Doe",
         customer_phone: reqBody.customer_phone || "9999999999",
-        customer_email: reqBody.customer_email || "test@example.com",
+        customer_email: reqBody.customer_email || "customer@example.com",
       },
     };
 
-    const url = `${baseUrl.replace(/\/$/, "")}/orders`;
+    // create order on provider
+    const orderResp = await createOrder(payload);
+    const data = orderResp.data;
+    console.log("Order creation response:", JSON.stringify(data));
 
-    // ⭐ API Call (keep-alive + timed)
-    const t1 = Date.now();
-    const resp = await client.post(url, payload, {
-      headers: {
-        "x-client-id": clientId,
-        "x-client-secret": clientSecret,
-        "x-api-version": "2025-01-01",
-        "Content-Type": "application/json",
-      },
-    });
-    const apiTime = Date.now() - t1;
+    // success check: adapt to provider fields
+    if (
+      data.order_status === "ACTIVE" ||
+      data.status === "OK" ||
+      data.success
+    ) {
+      const session =
+        data.payment_session_id || data.session_id || data.payment_session;
+      const paymentMethod = { upi: { channel: "link" } };
+      const paymentSessionResp = await getOrder(session, paymentMethod);
 
-    const data = resp.data;
-
-    if (!data || !data.order_id || !data.payment_session_id) {
-      throw new Error("Invalid response from provider");
+      console.log(
+        "Payment session data:",
+        JSON.stringify(paymentSessionResp.data)
+      );
+      return {
+        statusCode: 200,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          payment_session_id: data.payment_session_id || session,
+          order_id: data.order_id || orderId,
+          provider_response: paymentSessionResp.data,
+        }),
+      };
     }
 
-    console.log("createOrder total:", Date.now() - start, "ms");
-    console.log("provider API time:", apiTime, "ms");
-
+    // provider returned non-success
+    console.error("Provider createOrder failed:", JSON.stringify(data));
     return {
-      statusCode: 200,
+      statusCode: 502,
       headers: corsHeaders,
       body: JSON.stringify({
-        success: true,
-        order_id: data.order_id,
-        payment_session_id: data.payment_session_id,
-        provider_time_ms: apiTime,
+        error: "Failed to create payment session",
+        details: data,
       }),
     };
   } catch (err) {
-    console.error("createOrder error:", err.message || err);
-
+    // Always return CORS headers (very important)
+    console.error(
+      "createOrder error:",
+      err && (err.stack || err.message || err)
+    );
+    // If axios error, log response body for debugging
+    if (err && err.response) {
+      console.error("Axios response:", err.response.status, err.response.data);
+    }
     return {
       statusCode: 500,
       headers: corsHeaders,
-      body: JSON.stringify({
-        success: false,
-        error: err.message || "Unknown error",
-      }),
+      body: JSON.stringify({ error: err && (err.message || String(err)) }),
     };
   }
 };
