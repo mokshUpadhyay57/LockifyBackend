@@ -57,9 +57,9 @@ exports.handler = async (event, context) => {
     }
 
     // Environment
-    const baseUrl = process.env.CASHFREE_BASE_URL;
-    const clientId = process.env.CASHFREE_API_KEY;
-    const clientSecret = process.env.CASHFREE_API_SECRET;
+    const baseUrl = process.env.CF_BASE_URL;
+    const clientId = process.env.CF_API_KEY;
+    const clientSecret = process.env.CF_API_SECRET;
 
     if (!baseUrl || !clientId || !clientSecret) {
       throw new Error("Cashfree env vars missing");
