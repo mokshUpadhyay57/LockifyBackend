@@ -1,0 +1,6 @@
+[build]
+  publish = "."                # if no static frontend; change to "dist" or "public" if you have frontend build
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
