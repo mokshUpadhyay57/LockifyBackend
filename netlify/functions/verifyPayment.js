@@ -1,64 +1,106 @@
 // netlify/functions/verifyPayment.js
 const axios = require("axios");
 
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "https://lockify.co.in";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, X-Requested-With",
+  "Access-Control-Allow-Credentials": "true",
+};
+
 exports.handler = async (event, context) => {
-
-  // Only POST allowed
-  if (event.httpMethod !== "POST") {
-    return {
-      statusCode: 405,
-      headers: corsHeaders,
-      body: "Method Not Allowed",
-    };
-  }
-
   try {
-    const body = JSON.parse(event.body || "{}");
-    const { order_id } = body;
+    // Handle preflight
+    if (event.httpMethod === "OPTIONS") {
+      return { statusCode: 204, headers: corsHeaders, body: "" };
+    }
 
+    // Only allow POST
+    if (event.httpMethod !== "POST") {
+      return {
+        statusCode: 405,
+        headers: corsHeaders,
+        body: "Method Not Allowed",
+      };
+    }
+
+    // Parse body
+    const body = event.body ? JSON.parse(event.body) : {};
+    const { order_id } = body;
     if (!order_id) {
       return {
         statusCode: 400,
+        headers: corsHeaders,
         body: JSON.stringify({ error: "Missing order_id" }),
       };
     }
 
-    console.log("Received payment verification for:", order_id);
+    console.log("[verifyPayment] order_id:", order_id);
 
-    // Cashfree Provider Variables
-    const baseUrl = process.env.CASHFREE_BASE_URL; // e.g. https://sandbox.cashfree.com/pg/orders
+    // Env / provider config
+    const baseUrl = process.env.CASHFREE_BASE_URL; // should be like https://sandbox.cashfree.com/pg
     const clientId = process.env.CASHFREE_API_KEY;
     const clientSecret = process.env.CASHFREE_API_SECRET;
 
     if (!baseUrl || !clientId || !clientSecret) {
-      throw new Error("Cashfree environment variables missing");
+      console.error("[verifyPayment] Missing Cashfree env vars:", {
+        baseUrlExists: !!baseUrl,
+        clientIdExists: !!clientId,
+        clientSecretExists: !!clientSecret,
+      });
+      return {
+        statusCode: 500,
+        headers: corsHeaders,
+        body: JSON.stringify({
+          error: "Server misconfigured: missing Cashfree env vars",
+        }),
+      };
     }
 
-    // Call Cashfree verify endpoint
-    const resp = await axios.get(`${baseUrl}/orders/${order_id}`, {
+    // Call Cashfree
+    const url = `${baseUrl.replace(/\/$/, "")}/orders/${encodeURIComponent(
+      order_id
+    )}`;
+    console.log("[verifyPayment] calling Cashfree:", url);
+
+    const resp = await axios.get(url, {
       headers: {
         "x-client-id": clientId,
         "x-client-secret": clientSecret,
         "x-api-version": "2025-01-01",
         "Content-Type": "application/json",
       },
+      timeout: 10000,
     });
 
-    console.log("Verification response:", resp.data);
-
+    console.log("[verifyPayment] Cashfree response status:", resp.status);
+    // Return the provider response to client (with CORS headers)
     return {
       statusCode: 200,
+      headers: corsHeaders,
       body: JSON.stringify(resp.data),
     };
-  } catch (error) {
-    console.error("Payment verify error:", error);
-
+  } catch (err) {
+    console.error(
+      "[verifyPayment] error:",
+      err && (err.stack || err.message || err)
+    );
+    if (err.response) {
+      console.error(
+        "[verifyPayment] axios response data:",
+        err.response.status,
+        err.response.data
+      );
+    }
     return {
       statusCode: 500,
+      headers: corsHeaders,
       body: JSON.stringify({
         error: "Payment verification failed",
-        details:
-          error.response?.data || error.message || "Unknown error occurred",
+        details: err.response?.data || err.message || String(err),
       }),
     };
   }
