@@ -22,6 +22,7 @@ function generateOrderId() {
 const base = process.env.CF_BASE;
 const cashfree_api_key = process.env.CF_API_KEY;
 const cashfree_api_secret = process.env.CF_API_SECRET;
+
 async function createOrder(payload) {
   if (!base) throw new Error("PAYMENT_API_BASE is not set");
 
@@ -29,10 +30,11 @@ async function createOrder(payload) {
   const url = `${base}/orders`;
 
   const headers = {
-    "Content-Type": "application/json",
-    // Replace with whatever auth header your provider needs:
-    Authorization: `Bearer ${process.env.PAYMENT_API_KEY || ""}`,
-  };
+      "x-client-id": cashfree_api_key,
+      "x-client-secret": cashfree_api_secret,
+      "x-api-version": "2025-01-01",
+      "Content-Type": "application/json",
+    }
 
   const resp = await axios.post(url, payload, { headers });
   return resp;
