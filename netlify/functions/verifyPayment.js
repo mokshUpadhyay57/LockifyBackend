@@ -41,7 +41,7 @@ exports.handler = async (event, context) => {
     console.log("[verifyPayment] order_id:", order_id);
 
     // Env / provider config
-    const baseUrl = process.env.CF_BASE; // should be like https://sandbox.cashfree.com/pg
+    const baseUrl = process.env.CF_BASE_URL; // should be like https://sandbox.cashfree.com/pg
     const clientId = process.env.CF_API_KEY;
     const clientSecret = process.env.CF_API_SECRET;
 
