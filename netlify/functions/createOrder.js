@@ -11,10 +11,6 @@ const corsHeaders = {
   "Access-Control-Allow-Credentials": "true",
 };
 
-CF_API_KEY=TEST1062235145906b7390a7358bb67515322601
-CF_API_SECRET=cfsk_ma_test_bacaf32e70b433e3b228ed855920f271_a5764126
-CF_BASE=https://sandbox.cashfree.com/pg
-
 const base = process.env.CF_BASE;
 const api = process.env.CF_API_KEY;
 const secret = process.env.CF_API_SECRET;
