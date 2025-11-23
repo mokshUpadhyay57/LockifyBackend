@@ -12,8 +12,8 @@ const corsHeaders = {
 };
 
 const base = process.env.CF_BASE;
-const api = process.env.CF_API_KEY;
-const secret = process.env.CF_API_SECRET;
+const cashfree_api_key = process.env.CF_API_KEY;
+const cashfree_api_secret = process.env.CF_API_SECRET;
 
 function generateOrderId() {
   return `ORD_${Date.now()}_${Math.floor(Math.random() * 9000 + 1000)}`;
