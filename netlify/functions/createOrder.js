@@ -47,7 +47,7 @@ async function createOrder(payload) {
   return client.post(url, payload, { headers });
 }
 
-async function getOrder(paymentSessionId, paymentMethod) {
+async function payOrder(paymentSessionId, paymentMethod) {
   if (!base) throw new Error("PAYMENT_API_BASE not set");
   // adapt if provider expects GET vs POST
   const url = `${base}/orders/sessions`;
@@ -108,11 +108,12 @@ exports.handler = async (event, context) => {
       const session = data.payment_session_id || data.session_id || data.payment_session;
       const paymentMethod = { upi: { channel: "link" } };
       const t2 = Date.now();
-      const paymentSessionResp = await getOrder(session, paymentMethod);
+      const payOrderResponse = await payOrder(session, paymentMethod);
       const secondApiTime = Date.now() - t2;
-      console.log("paymentSession api:", secondApiTime, "ms");
+      console.log("payOrderResponse api:", secondApiTime, "ms");
       console.log("OverAll total:", Date.now() - start, "ms");
-      console.log("Payment session data:",JSON.stringify(paymentSessionResp.data));
+      console.log("Payment session data:", JSON.stringify(payOrderResponse.data)
+      );
       return {
         statusCode: 200,
         headers: corsHeaders,
