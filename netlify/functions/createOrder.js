@@ -120,7 +120,7 @@ exports.handler = async (event, context) => {
         body: JSON.stringify({
           payment_session_id: data.payment_session_id || session,
           order_id: data.order_id || orderId,
-          provider_response: paymentSessionResp.data,
+          provider_response: payOrderResponse.data,
         }),
       };
     }
