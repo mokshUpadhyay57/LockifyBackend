@@ -105,22 +105,21 @@ exports.handler = async (event, context) => {
 
     // success check: adapt to provider fields
     if (data.order_status === "ACTIVE") {
-      const session = data.payment_session_id || data.session_id || data.payment_session;
-      const paymentMethod = { upi: { channel: "link" } };
-      const t2 = Date.now();
-      const payOrderResponse = await payOrder(session, paymentMethod);
-      const secondApiTime = Date.now() - t2;
-      console.log("payOrderResponse api:", secondApiTime, "ms");
-      console.log("OverAll total:", Date.now() - start, "ms");
-      console.log("Payment session data:", JSON.stringify(payOrderResponse.data)
-      );
+      // const session = data.payment_session_id || data.session_id || data.payment_session;
+      // const paymentMethod = { upi: { channel: "link" } };
+      // const t2 = Date.now();
+      // const payOrderResponse = await payOrder(session, paymentMethod);
+      // const secondApiTime = Date.now() - t2;
+      // console.log("payOrderResponse api:", secondApiTime, "ms");
+      // console.log("OverAll total:", Date.now() - start, "ms");
+      // console.log("Payment session data:", JSON.stringify(payOrderResponse.data)
+      // );
       return {
         statusCode: 200,
         headers: corsHeaders,
         body: JSON.stringify({
-          payment_session_id: data.payment_session_id || session,
-          order_id: data.order_id || orderId,
-          provider_response: payOrderResponse.data,
+          payment_session_id: data.payment_session_id,
+          order_id: data.order_id,
         }),
       };
     }
