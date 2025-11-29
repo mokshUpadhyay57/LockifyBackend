@@ -44,7 +44,7 @@ async function createOrder(payload) {
     "x-api-version": "2025-01-01",
     "Content-Type": "application/json",
   };
-  return axios.post(url, payload, { headers });
+  return client.post(url, payload, { headers });
 }
 
 async function getOrder(paymentSessionId, paymentMethod) {
@@ -57,7 +57,7 @@ async function getOrder(paymentSessionId, paymentMethod) {
     "x-api-version": "2025-01-01",
     "Content-Type": "application/json",
   };
-  return axios.post(
+  return client.post(
     url,
     { payment_session_id: paymentSessionId, payment_method: paymentMethod },
     { headers }
