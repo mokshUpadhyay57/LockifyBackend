@@ -88,7 +88,7 @@ exports.handler = async (event, context) => {
       customer_details: reqBody.customer_details || {
         customer_id: reqBody.customer_id || "CUST001",
         // customer_name: reqBody.customer_name || "John Doe",
-        // customer_phone: reqBody.customer_phone || "9999999999",
+        customer_phone: reqBody.customer_phone || "9999999999",
         // customer_email: reqBody.customer_email || "customer@example.com",
       },
     };
