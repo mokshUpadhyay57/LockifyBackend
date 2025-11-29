@@ -13,6 +13,15 @@ const corsHeaders = {
 
 exports.handler = async (event, context) => {
   try {
+
+    if (event.httpMethod === "OPTIONS") {
+      return {
+        statusCode: 200, // MUST be 200 for preflight
+        headers: corsHeaders,
+        body: "",
+      };
+    }
+
     // Only allow POST
     if (event.httpMethod !== "POST") {
       return {
