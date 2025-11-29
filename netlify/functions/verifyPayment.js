@@ -13,11 +13,6 @@ const corsHeaders = {
 
 exports.handler = async (event, context) => {
   try {
-    // Handle preflight
-    if (event.httpMethod === "OPTIONS") {
-      return { statusCode: 204, headers: corsHeaders, body: "" };
-    }
-
     // Only allow POST
     if (event.httpMethod !== "POST") {
       return {
@@ -59,7 +54,6 @@ exports.handler = async (event, context) => {
         }),
       };
     }
-
     // Call Cashfree
     const url = `${baseUrl.replace(/\/$/, "")}/orders/${encodeURIComponent(
       order_id

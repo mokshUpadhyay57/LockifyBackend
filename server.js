@@ -8,7 +8,7 @@ const PORT = process.env.PORT;
 
 const cashfree_api_key = process.env.CF_API_KEY;
 const cashfree_api_secret = process.env.CF_API_SECRET;
-const cashfree_base_url = process.env.CF_BASE;
+const cashfree_base_url = process.env.CF_BASE_URL;
 
 const app = express();
 app.use(cors());
@@ -59,9 +59,9 @@ app.post("/payments", async (req, res) => {
     order_currency: "INR",
     customer_details: {
       customer_id: "CUST001",
-      customer_name: "John Doe",
+      // customer_name: "John Doe",
       customer_phone: "9999999999",
-      customer_email: "customer@example.com",
+      // customer_email: "customer@example.com",
     },
   };
   try {

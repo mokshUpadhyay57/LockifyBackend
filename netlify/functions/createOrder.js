@@ -1,19 +1,34 @@
 // netlify/functions/createOrder.js
 const axios = require("axios"); // make sure axios is in dependencies
+const https = require("https");
 
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "https://lockify.co.in";
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN;
+const base = process.env.CF_BASE_URL;
+const cashfree_api_key = process.env.CF_API_KEY;
+const cashfree_api_secret = process.env.CF_API_SECRET;
+
+
+const keepAliveAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 20, // Perfect for small/medium traffic
+  maxFreeSockets: 10,
+  timeout: 10000, // Close sockets after 10s idle
+});
+
+// ⭐ Axios instance using keep-alive
+const client = axios.create({
+  httpsAgent: keepAliveAgent,
+  timeout: 10000, // API timeout
+});
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN, // exact origin preferred
-  "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Requested-With",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Credentials": "true",
 };
 
-const base = process.env.CF_BASE_URL;
-const cashfree_api_key = process.env.CF_API_KEY;
-const cashfree_api_secret = process.env.CF_API_SECRET;
+
 
 function generateOrderId() {
   return `ORD_${Date.now()}_${Math.floor(Math.random() * 9000 + 1000)}`;
@@ -51,11 +66,6 @@ async function getOrder(paymentSessionId, paymentMethod) {
 
 /* Exported handler (Netlify expects exports.handler) */
 exports.handler = async (event, context) => {
-  // Always answer preflight so browser can continue
-  if (event.httpMethod === "OPTIONS") {
-    return { statusCode: 204, headers: corsHeaders, body: "" };
-  }
-
   // enforce POST
   if (event.httpMethod !== "POST") {
     return {
@@ -64,6 +74,8 @@ exports.handler = async (event, context) => {
       body: "Method Not Allowed",
     };
   }
+
+  const start = Date.now();
 
   try {
     const reqBody = event.body ? JSON.parse(event.body) : {};
@@ -75,32 +87,32 @@ exports.handler = async (event, context) => {
       order_currency: reqBody.currency || "INR",
       customer_details: reqBody.customer_details || {
         customer_id: reqBody.customer_id || "CUST001",
-        customer_name: reqBody.customer_name || "John Doe",
-        customer_phone: reqBody.customer_phone || "9999999999",
-        customer_email: reqBody.customer_email || "customer@example.com",
+        // customer_name: reqBody.customer_name || "John Doe",
+        // customer_phone: reqBody.customer_phone || "9999999999",
+        // customer_email: reqBody.customer_email || "customer@example.com",
       },
     };
 
     // create order on provider
+    const t1 = Date.now();
     const orderResp = await createOrder(payload);
+    const apiTime = Date.now() - t1;
     const data = orderResp.data;
     console.log("Order creation response:", JSON.stringify(data));
 
-    // success check: adapt to provider fields
-    if (
-      data.order_status === "ACTIVE" ||
-      data.status === "OK" ||
-      data.success
-    ) {
-      const session =
-        data.payment_session_id || data.session_id || data.payment_session;
-      const paymentMethod = { upi: { channel: "link" } };
-      const paymentSessionResp = await getOrder(session, paymentMethod);
+    
+    console.log("provider API time:", apiTime, "ms");
 
-      console.log(
-        "Payment session data:",
-        JSON.stringify(paymentSessionResp.data)
-      );
+    // success check: adapt to provider fields
+    if (data.order_status === "ACTIVE") {
+      const session = data.payment_session_id || data.session_id || data.payment_session;
+      const paymentMethod = { upi: { channel: "link" } };
+      const t2 = Date.now();
+      const paymentSessionResp = await getOrder(session, paymentMethod);
+      const secondApiTime = Date.now() - t2;
+      console.log("paymentSession api:", secondApiTime, "ms");
+      console.log("OverAll total:", Date.now() - start, "ms");
+      console.log("Payment session data:",JSON.stringify(paymentSessionResp.data));
       return {
         statusCode: 200,
         headers: corsHeaders,
