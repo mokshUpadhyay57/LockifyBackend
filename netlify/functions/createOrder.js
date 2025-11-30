@@ -34,9 +34,7 @@ function generateOrderId() {
   return `ORD_${Date.now()}_${Math.floor(Math.random() * 9000 + 1000)}`;
 }
 
-/* NOTE: adapt these helper URLs/headers to your payment provider */
 async function createOrder(payload) {
-  if (!base) throw new Error("PAYMENT_API_BASE not set");
   const url = `${base}/orders`; // ensure no trailing slash issues
   const headers = {
     "x-client-id": cashfree_api_key,
@@ -48,8 +46,6 @@ async function createOrder(payload) {
 }
 
 async function payOrder(paymentSessionId, paymentMethod) {
-  if (!base) throw new Error("PAYMENT_API_BASE not set");
-  // adapt if provider expects GET vs POST
   const url = `${base}/orders/sessions`;
   const headers = {
     "x-client-id": cashfree_api_key,
@@ -105,15 +101,14 @@ exports.handler = async (event, context) => {
 
     // success check: adapt to provider fields
     if (data.order_status === "ACTIVE") {
-      // const session = data.payment_session_id || data.session_id || data.payment_session;
-      // const paymentMethod = { upi: { channel: "link" } };
-      // const t2 = Date.now();
-      // const payOrderResponse = await payOrder(session, paymentMethod);
-      // const secondApiTime = Date.now() - t2;
-      // console.log("payOrderResponse api:", secondApiTime, "ms");
-      // console.log("OverAll total:", Date.now() - start, "ms");
-      // console.log("Payment session data:", JSON.stringify(payOrderResponse.data)
-      // );
+      const session = data.payment_session_id;
+      const paymentMethod = { upi: { channel: "link" } };
+      const t2 = Date.now();
+      // Order Pay API
+      const payOrderResponse = await payOrder(session, paymentMethod);
+      const secondApiTime = Date.now() - t2;
+      console.log("payOrderResponse api:", secondApiTime, "ms");
+      console.log("OverAll total:", Date.now() - start, "ms");
       return {
         statusCode: 200,
         headers: corsHeaders,
