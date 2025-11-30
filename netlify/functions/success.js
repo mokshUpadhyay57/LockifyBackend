@@ -5,7 +5,6 @@ const crypto = require("crypto");
 // Note: Netlify Functions get event + context arguments
 exports.handler = async (event) => {
   console.log("webhook called")
-  console.log("Received event:", event);
   // Only accept POST
   if (event.httpMethod !== "POST") {
     return {
@@ -46,7 +45,8 @@ exports.handler = async (event) => {
   }
 
   // Now you have verified webhook
-  console.log("Cashfree webhook payload:", payload);
+  console.log("Cashfree webhook payload:\n", JSON.stringify(payload, null, 2));
+
 
   const order = payload.data?.order;
   const payment = payload.data?.payment;

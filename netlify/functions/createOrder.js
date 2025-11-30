@@ -102,13 +102,14 @@ exports.handler = async (event, context) => {
     // success check: adapt to provider fields
     if (data.order_status === "ACTIVE") {
       const session = data.payment_session_id;
-      const paymentMethod = { upi: { channel: "link" } };
-      const t2 = Date.now();
-      // Order Pay API
-      const payOrderResponse = await payOrder(session, paymentMethod);
-      const secondApiTime = Date.now() - t2;
-      console.log("payOrderResponse api:", secondApiTime, "ms");
-      console.log("OverAll total:", Date.now() - start, "ms");
+      // for now , we only have upi payments, using compoenets so dont use this payOrder API
+      // const paymentMethod = { upi: { channel: "qrcode" } };
+      // const t2 = Date.now();
+      // // Order Pay API
+      // const payOrderResponse = await payOrder(session, paymentMethod);
+      // const secondApiTime = Date.now() - t2;
+      // console.log("payOrderResponse api:", secondApiTime, "ms");
+      // console.log("OverAll total:", Date.now() - start, "ms");
       return {
         statusCode: 200,
         headers: corsHeaders,
