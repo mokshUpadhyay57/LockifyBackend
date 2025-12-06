@@ -7,7 +7,6 @@ const base = process.env.CF_BASE_URL;
 const cashfree_api_key = process.env.CF_API_KEY;
 const cashfree_api_secret = process.env.CF_API_SECRET;
 
-
 const keepAliveAgent = new https.Agent({
   keepAlive: true,
   maxSockets: 20, // Perfect for small/medium traffic
@@ -18,17 +17,17 @@ const keepAliveAgent = new https.Agent({
 // ⭐ Axios instance using keep-alive
 const client = axios.create({
   httpsAgent: keepAliveAgent,
-  timeout: 10000, // API timeout
+  timeout: 15000, // API timeout
+  headers: { Connection: "keep-alive" },
 });
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, X-Requested-With",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
   "Access-Control-Allow-Credentials": "true",
 };
-
-
 
 function generateOrderId() {
   return `ORD_${Date.now()}_${Math.floor(Math.random() * 9000 + 1000)}`;
@@ -62,6 +61,9 @@ async function payOrder(paymentSessionId, paymentMethod) {
 
 /* Exported handler (Netlify expects exports.handler) */
 exports.handler = async (event, context) => {
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 204, headers: corsHeaders, body: "" };
+  }
   // enforce POST
   if (event.httpMethod !== "POST") {
     return {
@@ -93,11 +95,9 @@ exports.handler = async (event, context) => {
     const t1 = Date.now();
     const orderResp = await createOrder(payload);
     const apiTime = Date.now() - t1;
-    const data = orderResp.data;
-    console.log("Order creation response:", JSON.stringify(data));
+    const { data } = orderResp;
+    console.log("createOrder:", data && data.order_id, "status=", data && data.order_status, "apiMs=", apiTime);
 
-    
-    console.log("provider API time:", apiTime, "ms");
 
     // success check: adapt to provider fields
     if (data.order_status === "ACTIVE") {
