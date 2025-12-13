@@ -97,12 +97,11 @@ exports.handler = async (event, context) => {
     const apiTime = Date.now() - t1;
     const { data } = orderResp;
     console.log("createOrder:", data && data.order_id, "status=", data && data.order_status, "apiMs=", apiTime);
-
-
+    console.log("createOrder response:", data);
     // success check: adapt to provider fields
     if (data.order_status === "ACTIVE") {
       const session = data.payment_session_id;
-      // for now , we only have upi payments, using compoenets so dont use this payOrder API
+      // for now , we only have upi payments, using compoenents so dont use this payOrder API
       // const paymentMethod = { upi: { channel: "qrcode" } };
       // const t2 = Date.now();
       // // Order Pay API

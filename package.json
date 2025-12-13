@@ -1,7 +1,7 @@
 {
   "name": "lockify-backend",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "dev": "node --env-file .env --watch server.js"
   },
