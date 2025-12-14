@@ -89,7 +89,12 @@ exports.handler = async (event, context) => {
         customer_phone: reqBody.customer_phone || "8595238995",
         // customer_email: reqBody.customer_email || "customer@example.com",
       },
+      order_meta: {
+        return_url: `${reqBody.returnUrl}?order_id={order_id}`,
+      },
     };
+
+    console.log("Order meta:", payload.order_meta);
 
     // create order on provider
     const t1 = Date.now();
