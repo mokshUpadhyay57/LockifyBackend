@@ -13,12 +13,12 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-const ALLOWED_ORIGINS = ["https://lockify.co.in", "https://zipind-57.web.app"];
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGIN;
 
 exports.handler = async (event) => {
   const origin = event.headers.origin;
   const corsHeaders = {
-    "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
+    "Access-Control-Allow-Origin": ALLOWED_ORIGINS,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Credentials": "true",
