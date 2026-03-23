@@ -16,7 +16,7 @@ const db = admin.firestore();
 
 exports.handler = async (event) => {
   console.log("--- WEBHOOK RECEIVED ---");
-  
+
   if (event.httpMethod !== "POST") {
     console.log("Method Not Allowed:", event.httpMethod);
     return { statusCode: 405, body: "Method Not Allowed" };
@@ -29,7 +29,9 @@ exports.handler = async (event) => {
   // Verify Signature
   const secret = process.env.CF_API_SECRET;
   if (!secret) {
-     console.error("CRITICAL: CF_API_SECRET is not set in environment variables!");
+    console.error(
+      "CRITICAL: CF_API_SECRET is not set in environment variables!",
+    );
   }
 
   const expected = crypto
@@ -64,16 +66,20 @@ exports.handler = async (event) => {
     const buyerPhone = customer_details?.customer_phone;
     const amount = parseFloat(order.order_amount);
 
-    console.log(`Processing Order: ${orderId} | Message: ${lockedMessageId} | Phone: ${buyerPhone}`);
+    console.log(
+      `Processing Order: ${orderId} | Message: ${lockedMessageId} | Phone: ${buyerPhone}`,
+    );
 
     if (!orderId || !lockedMessageId || !buyerPhone) {
-      throw new Error(`Missing required fields: orderId=${orderId}, msgId=${lockedMessageId}, phone=${buyerPhone}`);
+      throw new Error(
+        `Missing required fields: orderId=${orderId}, msgId=${lockedMessageId}, phone=${buyerPhone}`,
+      );
     }
 
     await db.runTransaction(async (transaction) => {
       const orderRef = db.collection("orders").doc(orderId);
       const orderSnap = await transaction.get(orderRef);
-      
+
       // Idempotency: Don't credit twice
       if (orderSnap.exists && orderSnap.data().status === "PAID") {
         console.log("Order already processed in Firestore. Skipping.");
@@ -82,47 +88,63 @@ exports.handler = async (event) => {
 
       const msgRef = db.collection("lockedMessages").doc(lockedMessageId);
       const msgSnap = await transaction.get(msgRef);
-      if (!msgSnap.exists) throw new Error(`LockedMessage [${lockedMessageId}] not found in DB`);
+      if (!msgSnap.exists)
+        throw new Error(`LockedMessage [${lockedMessageId}] not found in DB`);
 
       const creatorId = msgSnap.data().createdBy;
-      if (!creatorId) throw new Error(`createdBy missing on message doc [${lockedMessageId}]`);
+      if (!creatorId)
+        throw new Error(
+          `createdBy missing on message doc [${lockedMessageId}]`,
+        );
 
       const purchaseId = `${buyerPhone}_${lockedMessageId}`;
       const purchaseRef = db.collection("purchases").doc(purchaseId);
       const walletRef = db.collection("wallets").doc(creatorId);
 
       // 1. Mark Order as PAID
-      transaction.set(orderRef, {
-        status: "PAID",
-        orderId: order.order_id,
-        cfPaymentId: payment?.cf_payment_id,
-        paidAt: admin.firestore.FieldValue.serverTimestamp(),
-        creatorId,
-        amount
-      }, { merge: true });
+      transaction.set(
+        orderRef,
+        {
+          status: "PAID",
+          orderId: order.order_id,
+          cfPaymentId: payment?.cf_payment_id,
+          paidAt: admin.firestore.FieldValue.serverTimestamp(),
+          creatorId,
+          amount,
+        },
+        { merge: true },
+      );
 
       // 2. Create Purchase Record (Unlocks the content)
-      transaction.set(purchaseRef, {
-        lockedMessageId,
-        buyerPhone,
-        orderId,
-        pricePaid: amount,
-        purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
-        creatorId
-      }, { merge: true });
+      transaction.set(
+        purchaseRef,
+        {
+          lockedMessageId,
+          buyerPhone,
+          orderId,
+          pricePaid: amount,
+          purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+          creatorId,
+        },
+        { merge: true },
+      );
 
       // 3. Increment Stats & Wallet
-      transaction.update(msgRef, { purchasedCount: admin.firestore.FieldValue.increment(1) });
-      transaction.set(walletRef, {
-        balance: admin.firestore.FieldValue.increment(amount),
-        totalEarned: admin.firestore.FieldValue.increment(amount),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      }, { merge: true });
+      transaction.update(msgRef, {
+        purchasedCount: admin.firestore.FieldValue.increment(1),
+      });
+      transaction.set(
+        walletRef,
+        {
+          balance: admin.firestore.FieldValue.increment(amount),
+          totalEarned: admin.firestore.FieldValue.increment(amount),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+      console.log(`✅ SUCCESSFULLY PROCESSED: ${orderId}`);
     });
-
-    console.log(`✅ SUCCESSFULLY PROCESSED: ${orderId}`);
     return { statusCode: 200, body: JSON.stringify({ received: true }) };
-
   } catch (err) {
     console.error("❌ WEBHOOK PROCESSING ERROR:", err.message);
     return { statusCode: 500, body: err.message };
