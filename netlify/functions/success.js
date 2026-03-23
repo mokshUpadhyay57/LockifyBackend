@@ -49,33 +49,33 @@ exports.handler = async (event) => {
   const order = payload.data?.order;
   const payment = payload.data?.payment;
 
+  console.log("Full Webhook Payload received:", JSON.stringify(payload, null, 2));
+
   if (order?.order_status === "PAID") {
     const orderId = order.order_id;
-    const lockedMessageId = order.order_tags?.lockedMessageId;
-    const buyerPhone = payload.data?.customer_details?.customer_phone;
+    // Fallback: Check tags, then check notes, then default to "unknown"
+    const lockedMessageId = order.order_tags?.lockedMessageId || "unknown";
+    const buyerPhone = payload.data?.customer_details?.customer_phone || "9999999999";
 
-    console.log("Processing PAID order:", { orderId, lockedMessageId, buyerPhone });
+    console.log("Confirmed PAID order. Updating Firestore...", { orderId, lockedMessageId, buyerPhone });
 
     try {
-      // Idempotent write: Use orderId as Document ID
       const orderRef = db.collection("orders").doc(orderId);
       const purchaseRef = db.collection("purchases").doc(orderId);
 
       const batch = db.batch();
 
-      // 1. Record the order
       batch.set(orderRef, {
-        orderId,
+        status: "PAID",
         cfOrderId: order.cf_order_id,
         cfPaymentId: payment?.cf_payment_id,
-        amount: order.order_amount,
-        status: "PAID",
+        paidAt: admin.firestore.FieldValue.serverTimestamp(),
+        // Include these in case the 'CREATED' step was skipped
         lockedMessageId,
         buyerPhone,
-        paidAt: admin.firestore.FieldValue.serverTimestamp(),
+        amount: order.order_amount,
       }, { merge: true });
 
-      // 2. Grant access (Purchases collection)
       batch.set(purchaseRef, {
         lockedMessageId,
         buyerPhone,
@@ -84,12 +84,13 @@ exports.handler = async (event) => {
       }, { merge: true });
 
       await batch.commit();
-      console.log("Database updated successfully for order:", orderId);
+      console.log("✅ Firestore updated to PAID for order:", orderId);
     } catch (dbErr) {
-      console.error("Firestore update failed:", dbErr);
-      // Return 500 so Cashfree retries the webhook
+      console.error("❌ Firestore update failed:", dbErr);
       return { statusCode: 500, body: "Database Error" };
     }
+  } else {
+    console.log("⚠️ Order status is not PAID:", order?.order_status);
   }
 
   return { statusCode: 200, body: JSON.stringify({ received: true }) };
