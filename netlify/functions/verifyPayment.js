@@ -1,6 +1,7 @@
 // netlify/functions/verifyPayment.js
 const axios = require("axios");
 const admin = require("firebase-admin");
+const https = require("https");
 
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -14,6 +15,19 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 const ALLOWED_ORIGINS = ["https://lockify.co.in", "https://zipind-57.web.app"];
+
+// 🚀 Optimization: Keep-Alive Agent for faster API calls
+const keepAliveAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 20,
+  timeout: 10000,
+});
+
+const client = axios.create({
+  httpsAgent: keepAliveAgent,
+  timeout: 10000,
+  headers: { Connection: "keep-alive" },
+});
 
 exports.handler = async (event) => {
   const origin = event.headers.origin;
@@ -40,7 +54,23 @@ exports.handler = async (event) => {
       };
     }
 
-    const resp = await axios.get(
+    // 🚀 OPTIMIZATION 1: Check our own DB first (Fastest path)
+    const initialOrderSnap = await db.collection("orders").doc(order_id).get();
+    if (initialOrderSnap.exists && initialOrderSnap.data().status === "PAID") {
+      console.log(`[verifyPayment] ⚡ Optimistic Hit: Order ${order_id} already PAID.`);
+      return {
+        statusCode: 200,
+        headers: corsHeaders,
+        body: JSON.stringify({ 
+          order_status: "PAID", 
+          order_id: order_id,
+          optimistic: true 
+        }),
+      };
+    }
+
+    // 🚀 OPTIMIZATION 2: Only call Cashfree if NOT already PAID in our DB
+    const resp = await client.get(
       `${process.env.CF_BASE_URL.replace(/\/$/, "")}/orders/${order_id}`,
       {
         headers: {
