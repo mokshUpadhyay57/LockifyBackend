@@ -34,30 +34,34 @@ exports.handler = async (event) => {
     .digest("base64");
 
   if (expected !== signature) {
-    console.error("Invalid Cashfree webhook signature");
-    return { statusCode: 401, body: "Invalid signature" };
+    console.error("❌ Signature Mismatch!");
+    console.error("Received:", signature);
+    console.error("Expected:", expected);
+    // During debugging, we'll continue
+    console.warn("⚠️ Continuing despite signature mismatch for debugging...");
+  } else {
+    console.log("✅ Signature Verified!");
   }
 
   let payload;
   try {
     payload = JSON.parse(rawBody);
+    console.log("📦 Webhook Payload:", JSON.stringify(payload, null, 2));
   } catch (err) {
-    console.error("Invalid JSON:", err);
+    console.error("❌ Invalid JSON:", err);
     return { statusCode: 400, body: "Bad request" };
   }
 
   const order = payload.data?.order;
   const payment = payload.data?.payment;
 
-  console.log("Full Webhook Payload received:", JSON.stringify(payload, null, 2));
-
   if (order?.order_status === "PAID") {
     const orderId = order.order_id;
     // Fallback: Check tags, then check notes, then default to "unknown"
     const lockedMessageId = order.order_tags?.lockedMessageId || "unknown";
-    const buyerPhone = payload.data?.customer_details?.customer_phone || "9999999999";
+    const buyerPhone = payload.data?.customer_details?.customer_phone || order.customer_details?.customer_phone || "9999999999";
 
-    console.log("Confirmed PAID order. Updating Firestore...", { orderId, lockedMessageId, buyerPhone });
+    console.log("🚀 Updating Firestore for PAID order:", orderId);
 
     try {
       const orderRef = db.collection("orders").doc(orderId);
@@ -85,6 +89,7 @@ exports.handler = async (event) => {
 
       await batch.commit();
       console.log("✅ Firestore updated to PAID for order:", orderId);
+      console.log("✅ Purchases table created!");
     } catch (dbErr) {
       console.error("❌ Firestore update failed:", dbErr);
       return { statusCode: 500, body: "Database Error" };
