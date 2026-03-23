@@ -46,11 +46,10 @@ exports.handler = async (event) => {
   try {
     const { order_id } = JSON.parse(event.body || "{}");
     if (!order_id) {
-      console.error("❌ [verifyPayment] Missing order_id in request body");
       return { statusCode: 400, headers: corsHeaders, body: "Missing order_id" };
     }
 
-    // 🚀 OPTIMIZATION: Fire both requests in parallel
+    // 🚀 HIGH PERFORMANCE: Parallel fire of DB check and Cashfree API
     const [initialOrderSnap, cashfreeResp] = await Promise.all([
       db.collection("orders").doc(order_id).get(),
       client.get(
@@ -62,12 +61,12 @@ exports.handler = async (event) => {
             "x-api-version": "2025-01-01",
           },
         }
-      ).catch(err => ({ error: err })) // Catch API errors to handle later
+      ).catch(err => ({ error: err }))
     ]);
 
-    // 1. Check for Optimistic Hit (Already Paid in our DB)
+    // 1. FAST PATH: If our DB already says PAID (webhook finished early)
     if (initialOrderSnap.exists && initialOrderSnap.data().status === "PAID") {
-      console.log(`[verifyPayment] ⚡ Optimistic Hit: Order ${order_id} already PAID.`);
+      console.log(`[verifyPayment] ⚡ Optimistic Hit: Order ${order_id}`);
       return {
         statusCode: 200,
         headers: corsHeaders,
@@ -75,99 +74,24 @@ exports.handler = async (event) => {
       };
     }
 
-    // 2. Handle Cashfree API error if it happened during parallel fetch
+    // 2. API PATH: Return the raw Cashfree status immediately
     if (cashfreeResp.error) {
        throw new Error(`Cashfree API failed: ${cashfreeResp.error.message}`);
     }
 
     const data = cashfreeResp.data;
-    if (data.order_status === "PAID") {
-      const lockedMessageId = data.order_tags?.lockedMessageId;
-      const buyerPhone = data.customer_details?.customer_phone;
-      const amount = parseFloat(data.order_amount);
+    console.log(`[verifyPayment] ⚡ Status for ${order_id}: ${data.order_status}`);
 
-      // PINPOINTING VALIDATION
-      if (!lockedMessageId)
-        throw new Error("CRITICAL: lockedMessageId is missing in order tags");
-      if (!buyerPhone)
-        throw new Error("CRITICAL: buyerPhone is missing in customer details");
-
-      await db.runTransaction(async (transaction) => {
-        const orderRef = db.collection("orders").doc(order_id);
-        const orderSnap = await transaction.get(orderRef);
-
-        // IDEMPOTENCY CHECK: If already paid, exit without double-incrementing balance
-        if (orderSnap.exists && orderSnap.data().status === "PAID") {
-          console.log(
-            `[verifyPayment] Order ${order_id} already processed. Skipping.`,
-          );
-          return;
-        }
-
-        const purchaseId = `${buyerPhone}_${lockedMessageId}`;
-        const purchaseRef = db.collection("purchases").doc(purchaseId);
-
-        const msgRef = db.collection("lockedMessages").doc(lockedMessageId);
-        const msgSnap = await transaction.get(msgRef);
-
-        if (!msgSnap.exists)
-          throw new Error(
-            `LockedMessage [${lockedMessageId}] does not exist in database`,
-          );
-
-        const creatorId = msgSnap.data().createdBy;
-        if (!creatorId)
-          throw new Error(
-            `CRITICAL: createdBy is missing on message [${lockedMessageId}]`,
-          );
-
-        const walletRef = db.collection("wallets").doc(creatorId);
-
-        transaction.set(
-          orderRef,
-          {
-            status: "PAID",
-            paidAt: admin.firestore.FieldValue.serverTimestamp(),
-            creatorId,
-            amount,
-          },
-          { merge: true },
-        );
-        transaction.set(
-          purchaseRef,
-          {
-            lockedMessageId,
-            buyerPhone,
-            orderId: order_id,
-            pricePaid: amount,
-            purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
-            creatorId,
-          },
-          { merge: true },
-        );
-        transaction.update(msgRef, {
-          purchasedCount: admin.firestore.FieldValue.increment(1),
-        });
-        transaction.set(
-          walletRef,
-          {
-            balance: admin.firestore.FieldValue.increment(amount),
-            totalEarned: admin.firestore.FieldValue.increment(amount),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-          { merge: true },
-        );
-        console.log(`[verifyPayment] ✅ SUCCESS: Order ${order_id} processed.`);
-      });
-    }
-
+    // NOTE: The heavy db.runTransaction is removed. 
+    // The success.js webhook handles wallet/purchase records in the background.
+    
     return {
       statusCode: 200,
       headers: corsHeaders,
       body: JSON.stringify(data),
     };
   } catch (err) {
-    console.error("[verifyPayment] ❌ PATH ERROR PINPOINTED:", err.message);
+    console.error("[verifyPayment] ❌ Error:", err.message);
     return {
       statusCode: 500,
       headers: corsHeaders,
