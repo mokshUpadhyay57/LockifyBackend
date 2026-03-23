@@ -49,13 +49,13 @@ exports.handler = async (event) => {
   try {
     const payload = JSON.parse(rawBody || "{}");
     console.log("Event Type:", payload.type);
-    
+    console.log("Full Payload:", JSON.stringify(payload, null, 2));
     // Normalize data extraction (Cashfree often nests inside 'data')
     const data = payload.data || payload;
     const { order, customer_details, payment } = data;
 
     if (!order || order.order_status !== "PAID") {
-      console.log("Order is not PAID or payload structure mismatch. Status:", order?.order_status);
+      console.log("Order is not PAID. Status:", order?.order_status);
       return { statusCode: 200, body: "Not a PAID event" };
     }
 
