@@ -13,12 +13,12 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGIN;
+const ALLOWED_ORIGINS = ["https://lockify.co.in", "https://zipind-57.web.app"];
 
 exports.handler = async (event) => {
   const origin = event.headers.origin;
   const corsHeaders = {
-    "Access-Control-Allow-Origin": ALLOWED_ORIGINS,
+    "Access-Control-Allow-Origin": ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Credentials": "true",
@@ -28,7 +28,10 @@ exports.handler = async (event) => {
 
   try {
     const { order_id } = JSON.parse(event.body || "{}");
-    if (!order_id) return { statusCode: 400, headers: corsHeaders, body: "Missing order_id" };
+    if (!order_id) {
+      console.error("❌ [verifyPayment] Missing order_id in request body");
+      return { statusCode: 400, headers: corsHeaders, body: "Missing order_id" };
+    }
 
     const resp = await axios.get(`${process.env.CF_BASE_URL.replace(/\/$/, "")}/orders/${order_id}`, {
       headers: {
@@ -39,12 +42,14 @@ exports.handler = async (event) => {
     });
 
     const data = resp.data;
-    console.log(`[verifyPayment] Order ${order_id} status: ${data.order_status}`);
-
     if (data.order_status === "PAID") {
-      const lockedMessageId = data.order_tags?.lockedMessageId || "unknown";
-      const buyerPhone = data.customer_details?.customer_phone || "9999999999";
+      const lockedMessageId = data.order_tags?.lockedMessageId;
+      const buyerPhone = data.customer_details?.customer_phone;
       const amount = parseFloat(data.order_amount);
+
+      // PINPOINTING VALIDATION
+      if (!lockedMessageId) throw new Error("CRITICAL: lockedMessageId is missing in order tags");
+      if (!buyerPhone) throw new Error("CRITICAL: buyerPhone is missing in customer details");
 
       await db.runTransaction(async (transaction) => {
         const orderRef = db.collection("orders").doc(order_id);
@@ -54,49 +59,26 @@ exports.handler = async (event) => {
         const msgRef = db.collection("lockedMessages").doc(lockedMessageId);
         const msgSnap = await transaction.get(msgRef);
         
-        if (!msgSnap.exists) throw new Error(`LockedMessage ${lockedMessageId} not found`);
-        const msgData = msgSnap.data();
-        const creatorId = msgData.creatorId;
+        if (!msgSnap.exists) throw new Error(`LockedMessage [${lockedMessageId}] does not exist in database`);
+        
+        const creatorId = msgSnap.data().createdBy;
+        if (!creatorId) throw new Error(`CRITICAL: createdBy is missing on message [${lockedMessageId}]`);
+
         const walletRef = db.collection("wallets").doc(creatorId);
 
-        // 1. Update Order
-        transaction.set(orderRef, {
-          status: "PAID",
-          paidAt: admin.firestore.FieldValue.serverTimestamp(),
-          creatorId,
-          amount: amount
-        }, { merge: true });
-
-        // 2. Update Purchase (Matches App Schema)
-        transaction.set(purchaseRef, {
-          lockedMessageId,
-          buyerPhone,
-          orderId: order_id,
-          pricePaid: amount,
-          purchasedAt: admin.firestore.FieldValue.serverTimestamp(), // Match App
-          creatorId: creatorId
-        }, { merge: true });
-
-        // 3. Increment Message Purchased Count
-        transaction.update(msgRef, {
-          purchasedCount: admin.firestore.FieldValue.increment(1)
-        });
-
-        // 4. Update Creator Wallet
-        transaction.set(walletRef, {
-          balance: admin.firestore.FieldValue.increment(amount),
-          totalEarned: admin.firestore.FieldValue.increment(amount),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        }, { merge: true });
+        transaction.set(orderRef, { status: "PAID", paidAt: admin.firestore.FieldValue.serverTimestamp(), creatorId, amount }, { merge: true });
+        transaction.set(purchaseRef, { lockedMessageId, buyerPhone, orderId: order_id, pricePaid: amount, purchasedAt: admin.firestore.FieldValue.serverTimestamp(), creatorId }, { merge: true });
+        transaction.update(msgRef, { purchasedCount: admin.firestore.FieldValue.increment(1) });
+        transaction.set(walletRef, { balance: admin.firestore.FieldValue.increment(amount), totalEarned: admin.firestore.FieldValue.increment(amount), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
       });
 
-      console.log(`[verifyPayment] ✅ SUCCESS: Tables created & Wallet updated for ${order_id}`);
+      console.log(`[verifyPayment] ✅ SUCCESS: Order ${order_id} processed.`);
     }
 
     return { statusCode: 200, headers: corsHeaders, body: JSON.stringify(data) };
 
   } catch (err) {
-    console.error("[verifyPayment] ❌ Error:", err.message);
+    console.error("[verifyPayment] ❌ PATH ERROR PINPOINTED:", err.message);
     return { statusCode: 500, headers: corsHeaders, body: JSON.stringify({ error: err.message }) };
   }
 };
