@@ -47,41 +47,40 @@ exports.handler = async (event) => {
     const { order_id } = JSON.parse(event.body || "{}");
     if (!order_id) {
       console.error("❌ [verifyPayment] Missing order_id in request body");
-      return {
-        statusCode: 400,
-        headers: corsHeaders,
-        body: "Missing order_id",
-      };
+      return { statusCode: 400, headers: corsHeaders, body: "Missing order_id" };
     }
 
-    // 🚀 OPTIMIZATION 1: Check our own DB first (Fastest path)
-    const initialOrderSnap = await db.collection("orders").doc(order_id).get();
+    // 🚀 OPTIMIZATION: Fire both requests in parallel
+    const [initialOrderSnap, cashfreeResp] = await Promise.all([
+      db.collection("orders").doc(order_id).get(),
+      client.get(
+        `${process.env.CF_BASE_URL.replace(/\/$/, "")}/orders/${order_id}`,
+        {
+          headers: {
+            "x-client-id": process.env.CF_API_KEY,
+            "x-client-secret": process.env.CF_API_SECRET,
+            "x-api-version": "2025-01-01",
+          },
+        }
+      ).catch(err => ({ error: err })) // Catch API errors to handle later
+    ]);
+
+    // 1. Check for Optimistic Hit (Already Paid in our DB)
     if (initialOrderSnap.exists && initialOrderSnap.data().status === "PAID") {
       console.log(`[verifyPayment] ⚡ Optimistic Hit: Order ${order_id} already PAID.`);
       return {
         statusCode: 200,
         headers: corsHeaders,
-        body: JSON.stringify({ 
-          order_status: "PAID", 
-          order_id: order_id,
-          optimistic: true 
-        }),
+        body: JSON.stringify({ order_status: "PAID", order_id, optimistic: true }),
       };
     }
 
-    // 🚀 OPTIMIZATION 2: Only call Cashfree if NOT already PAID in our DB
-    const resp = await client.get(
-      `${process.env.CF_BASE_URL.replace(/\/$/, "")}/orders/${order_id}`,
-      {
-        headers: {
-          "x-client-id": process.env.CF_API_KEY,
-          "x-client-secret": process.env.CF_API_SECRET,
-          "x-api-version": "2025-01-01",
-        },
-      },
-    );
+    // 2. Handle Cashfree API error if it happened during parallel fetch
+    if (cashfreeResp.error) {
+       throw new Error(`Cashfree API failed: ${cashfreeResp.error.message}`);
+    }
 
-    const data = resp.data;
+    const data = cashfreeResp.data;
     if (data.order_status === "PAID") {
       const lockedMessageId = data.order_tags?.lockedMessageId;
       const buyerPhone = data.customer_details?.customer_phone;
