@@ -7,13 +7,9 @@ const admin = require("firebase-admin");
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID || "zipind-57",
-      clientEmail:
-        process.env.FIREBASE_CLIENT_EMAIL ||
-        "firebase-adminsdk-fbsvc@zipind-57.iam.gserviceaccount.com",
-      privateKey:
-        process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n") ||
-        "MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCoUWbSRxJzVKl9\ncAXC7IEzHlew6axnCohI6divMgWwKlz+tUWRyqu/YM64KWAzmsZdTnY/dMyJUupP\nqJYVgc/X7FFLh3CDoVVcJ0Thp0LtWSOC9FzUqrlzQwbDyx50XI6vxyg+dqpQ7zM2\n8o0si2rDUWXfaPG2FuqBNrVKmJdBrJ0zEs99ltqgxthPN/DsX6iCB7TsrYWghMKT\ncg1eU15pwkNjzThsVzfhz+yeNQBQqp+awl1qWhLBvJImcYsne7EocFeYOBcnfL8G\ngMFAzO+CRhIpx/L4HXJpzcRxw2MfLnSddmcJsTRnoYbNb+YDwANQ1hzZ6NBcZN8G\np5e2oWQfAgMBAAECggEACBqvRDWm1kW/yWng5SNFD0SJPVvq8KUprbUQuVLDwlkv\n1BW/TUdAYL0VBvn7B1EO9wQlnmWNyZjj7kT0QQHYk5Ft0qCpUrUsanz7jI/koY/2\nrUH9zEGSH1IdW8UGaNziA+WncuZ8ydvSj/U6xefKkq/zI0AmzzkoPmN3dCmHsuI8\nSESu87ZhH00KQC3/0/XzfWLB/axNRZWEA71VtYqp4n4oPb/CU4bsQb3iGlF7LMUE\nhozpEErviO4//RelVjMiGvAcl4mC+8/HeMbQjV3Vp2pkPJyRaRmg8gpP9NwbVOvI\nbav7nxlqZpW1SSyKNkRAZU9TM4icHCMClZH5olf7fQKBgQDXxbgNVbuKqBfZuuXZ\n5acrnJGJ+N1wAZhIrSrHhJV4r6RVoLezLDuwnM+7vjQcAhBthCwXEgAoHCV2DTV9\nf8xxEcvfTdaku8zYrNG4yjy4aSas38cZ95giMGVFTJH388yIt9DlOTa1yLXWqnci\n/pPQ3J7P1XXDTiWKxVm7uroEUwKBgQDHss2T1wawVkrWZzFvayzeym0CoyXNBTP7\nj+3+1TV8fbaslUmEfz7glAx+lFg6FGr0gaQOrLl/5JqQcv30mVPLTHQTEjDj2imR\nsEPLpJJ8MvVRfljJ8GnjauqBPZuEzcBTir/j+Qohz2LLciBcki0oTtatIAxfIysw\n/5XicsmnhQKBgHDr/sirx3xnQCQolcYVVAmU5O3qGilWDFZsmejU0EzazwwpEjpo\nucxSJL1Ca48E3YgTFef0+bQEFu7TNt05FstN3v48hEquJiR3PUKSRHjWPvFWI6LJ\nWwr5fOZpjjLPmokqed6ctK8qHU/84mCkDsPN0ic+tWTC7w7S/YUr0dIVAoGBALDH\nMMMB43LwQLmBijqGlqb2bP+bqxfN1lGH/PfMh9eXdcFbOkRnXCL0DAd1jJCFiJS/\nupoe/usfVFAw62y+2nWqTUqgnNTnSEsmzS0Vl3MIrS+h+DlzcFkYSVV1UxmCBhIu\nTmYiDH0Xl+5fLhSkdgMrn1CMgUcq2845Qta+JJL9AoGBAJeH2Hvsv/5CKrWGU4dd\ng5Oc+2nsHL3xg+OJxq16F4Y4RrRW+964MiVMPR/l7RiY5Hqtu3F3aoceugIcWneW\nTqCux/N6bS+AipQsfaKCQe9RPtbddQfGkgpwVaK+3yP4xOUbdIf+cQnaZE6vI57I\nwBJkogXdp1B8im6Jhc3EZ9a/",
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
     }),
   });
 }
@@ -73,7 +69,7 @@ async function payOrder(paymentSessionId, paymentMethod) {
   return client.post(
     url,
     { payment_session_id: paymentSessionId, payment_method: paymentMethod },
-    { headers }
+    { headers },
   );
 }
 
@@ -109,8 +105,8 @@ exports.handler = async (event, context) => {
         return_url: `${reqBody.returnUrl}?order_id={order_id}`,
       },
       order_tags: {
-        lockedMessageId: reqBody.lockedMessageId || "unknown"
-      }
+        lockedMessageId: reqBody.lockedMessageId || "unknown",
+      },
     };
 
     console.log("Order meta:", payload.order_meta);
@@ -120,21 +116,30 @@ exports.handler = async (event, context) => {
     const orderResp = await createOrder(payload);
     const apiTime = Date.now() - t1;
     const { data } = orderResp;
-    console.log("createOrder:", data && data.order_id, "status=", data && data.order_status, "apiMs=", apiTime);
+    console.log(
+      "createOrder:",
+      data && data.order_id,
+      "status=",
+      data && data.order_status,
+      "apiMs=",
+      apiTime,
+    );
     console.log("createOrder response:", data);
     // success check: adapt to provider fields
     if (data.order_status === "ACTIVE") {
-      
       // CREATE INITIAL ORDER IN FIRESTORE
       try {
-        await db.collection("orders").doc(orderId).set({
-          orderId: orderId,
-          amount: payload.order_amount,
-          status: "CREATED",
-          lockedMessageId: reqBody.lockedMessageId || "unknown",
-          buyerPhone: payload.customer_details.customer_phone,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        await db
+          .collection("orders")
+          .doc(orderId)
+          .set({
+            orderId: orderId,
+            amount: payload.order_amount,
+            status: "CREATED",
+            lockedMessageId: reqBody.lockedMessageId || "unknown",
+            buyerPhone: payload.customer_details.customer_phone,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
         console.log("Firestore order created:", orderId);
       } catch (dbErr) {
         console.error("Firestore initial write failed:", dbErr);
@@ -174,7 +179,7 @@ exports.handler = async (event, context) => {
     // Always return CORS headers (very important)
     console.error(
       "createOrder error:",
-      err && (err.stack || err.message || err)
+      err && (err.stack || err.message || err),
     );
     // If axios error, log response body for debugging
     if (err && err.response) {
