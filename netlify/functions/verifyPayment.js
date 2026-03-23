@@ -128,9 +128,8 @@ exports.handler = async (event) => {
           },
           { merge: true },
         );
+        console.log(`[verifyPayment] ✅ SUCCESS: Order ${order_id} processed.`);
       });
-
-      console.log(`[verifyPayment] ✅ SUCCESS: Order ${order_id} processed.`);
     }
 
     return {
