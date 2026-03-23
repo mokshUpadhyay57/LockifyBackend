@@ -54,8 +54,8 @@ exports.handler = async (event) => {
     const data = payload.data || payload;
     const { order, customer_details, payment } = data;
 
-    if (!order || order.order_status !== "PAID") {
-      console.log("Order is not PAID. Status:", order?.order_status);
+    if (!order || payment.payment_status !== "SUCCESS") {
+      console.log("Order is not PAID. Status:", payment?.payment_status);
       return { statusCode: 200, body: "Not a PAID event" };
     }
 
@@ -94,7 +94,7 @@ exports.handler = async (event) => {
       // 1. Mark Order as PAID
       transaction.set(orderRef, {
         status: "PAID",
-        cfOrderId: order.cf_order_id,
+        orderId: order.order_id,
         cfPaymentId: payment?.cf_payment_id,
         paidAt: admin.firestore.FieldValue.serverTimestamp(),
         creatorId,
