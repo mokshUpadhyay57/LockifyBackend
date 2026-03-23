@@ -103,6 +103,7 @@ exports.handler = async (event, context) => {
       },
       order_meta: {
         return_url: `${reqBody.returnUrl}?order_id={order_id}`,
+        notify_url: `https://lockifybackend.netlify.app/.netlify/functions/success`,
       },
       order_tags: {
         lockedMessageId: reqBody.lockedMessageId || "unknown",
