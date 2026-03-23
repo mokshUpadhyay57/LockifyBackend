@@ -2,13 +2,11 @@
 const crypto = require("crypto");
 const admin = require("firebase-admin");
 
-// Initialize Firebase Admin (Idempotent initialization)
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      // Handle newline characters in private key from env var
       privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, "\n"),
     }),
   });
@@ -17,85 +15,79 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 exports.handler = async (event) => {
-  console.log("Webhook called");
-
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method Not Allowed" };
-  }
+  if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
 
   const rawBody = event.body;
   const ts = event.headers["x-webhook-timestamp"];
   const signature = event.headers["x-webhook-signature"];
-  const CASHFREE_SECRET = process.env.CF_API_SECRET;
+  const expected = crypto.createHmac("sha256", process.env.CF_API_SECRET).update(ts + rawBody).digest("base64");
 
-  const expected = crypto
-    .createHmac("sha256", CASHFREE_SECRET)
-    .update(ts + rawBody)
-    .digest("base64");
-
+  // PRODUCTION GRADE: Strict Signature Verification
   if (expected !== signature) {
-    console.error("❌ Signature Mismatch!");
-    console.error("Received:", signature);
-    console.error("Expected:", expected);
-    // During debugging, we'll continue
-    console.warn("⚠️ Continuing despite signature mismatch for debugging...");
-  } else {
-    console.log("✅ Signature Verified!");
+    console.error("❌ Signature Mismatch! Rejecting Webhook.");
+    return { statusCode: 401, body: "Invalid signature" };
   }
 
-  let payload;
-  try {
-    payload = JSON.parse(rawBody);
-    console.log("📦 Webhook Payload:", JSON.stringify(payload, null, 2));
-  } catch (err) {
-    console.error("❌ Invalid JSON:", err);
-    return { statusCode: 400, body: "Bad request" };
-  }
-
-  const order = payload.data?.order;
-  const payment = payload.data?.payment;
+  const payload = JSON.parse(rawBody);
+  const { order, payment, customer_details } = payload.data || {};
 
   if (order?.order_status === "PAID") {
     const orderId = order.order_id;
-    // Fallback: Check tags, then check notes, then default to "unknown"
     const lockedMessageId = order.order_tags?.lockedMessageId || "unknown";
-    const buyerPhone = payload.data?.customer_details?.customer_phone || order.customer_details?.customer_phone || "9999999999";
-
-    console.log("🚀 Updating Firestore for PAID order:", orderId);
+    const buyerPhone = customer_details?.customer_phone || "9999999999";
+    const amount = parseFloat(order.order_amount);
 
     try {
-      const orderRef = db.collection("orders").doc(orderId);
-      const purchaseRef = db.collection("purchases").doc(orderId);
+      await db.runTransaction(async (transaction) => {
+        const orderRef = db.collection("orders").doc(orderId);
+        
+        // 1. Check if order is already marked PAID to prevent double wallet credits
+        const orderSnap = await transaction.get(orderRef);
+        if (orderSnap.exists && orderSnap.data().status === "PAID") {
+          console.log(`[Webhook] Order ${orderId} already processed. Skipping.`);
+          return;
+        }
 
-      const batch = db.batch();
+        const purchaseRef = db.collection("purchases").doc(`${buyerPhone}_${lockedMessageId}`);
+        
+        // 2. Fetch Message/Creator
+        const msgRef = db.collection("lockedMessages").doc(lockedMessageId);
+        const msgSnap = await transaction.get(msgRef);
+        if (!msgSnap.exists) throw new Error("Message not found");
+        
+        const creatorId = msgSnap.data().creatorId;
+        const walletRef = db.collection("wallets").doc(creatorId);
 
-      batch.set(orderRef, {
-        status: "PAID",
-        cfOrderId: order.cf_order_id,
-        cfPaymentId: payment?.cf_payment_id,
-        paidAt: admin.firestore.FieldValue.serverTimestamp(),
-        // Include these in case the 'CREATED' step was skipped
-        lockedMessageId,
-        buyerPhone,
-        amount: order.order_amount,
-      }, { merge: true });
+        // 3. Update Order
+        transaction.set(orderRef, {
+          status: "PAID",
+          cfOrderId: order.cf_order_id,
+          cfPaymentId: payment?.cf_payment_id,
+          paidAt: admin.firestore.FieldValue.serverTimestamp(),
+          creatorId
+        }, { merge: true });
 
-      batch.set(purchaseRef, {
-        lockedMessageId,
-        buyerPhone,
-        orderId,
-        grantedAt: admin.firestore.FieldValue.serverTimestamp(),
-      }, { merge: true });
+        // 4. Update Purchase
+        transaction.set(purchaseRef, {
+          lockedMessageId,
+          buyerPhone,
+          orderId,
+          grantedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
 
-      await batch.commit();
-      console.log("✅ Firestore updated to PAID for order:", orderId);
-      console.log("✅ Purchases table created!");
-    } catch (dbErr) {
-      console.error("❌ Firestore update failed:", dbErr);
-      return { statusCode: 500, body: "Database Error" };
+        // 5. Update Creator Wallet
+        transaction.set(walletRef, {
+          balance: admin.firestore.FieldValue.increment(amount),
+          totalEarned: admin.firestore.FieldValue.increment(amount),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      });
+
+      console.log(`[Webhook] ✅ Order ${orderId} finalized via transaction.`);
+    } catch (err) {
+      console.error("[Webhook] ❌ Transaction Error:", err.message);
+      return { statusCode: 500, body: "Transaction failed" };
     }
-  } else {
-    console.log("⚠️ Order status is not PAID:", order?.order_status);
   }
 
   return { statusCode: 200, body: JSON.stringify({ received: true }) };
