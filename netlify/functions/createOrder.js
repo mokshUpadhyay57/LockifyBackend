@@ -38,7 +38,7 @@ async function createOrder(payload) {
   const headers = {
     "x-client-id": cashfree_api_key,
     "x-client-secret": cashfree_api_secret,
-    "x-api-version": "2023-08-01",
+    "x-api-version": "2025-01-01",
     "Content-Type": "application/json",
   };
   return client.post(url, payload, { headers });
@@ -83,15 +83,16 @@ exports.handler = async (event, context) => {
       order_id: orderId,
       order_amount: reqBody.amount || 1000,
       order_currency: reqBody.currency || "INR",
-      customer_details: reqBody.customer_details || {
-        customer_id: reqBody.customer_id || "CUST001",
-        // customer_name: reqBody.customer_name || "John Doe",
-        customer_phone: reqBody.customer_phone || "8595238995",
-        // customer_email: reqBody.customer_email || "customer@example.com",
+      customer_details: {
+        customer_id: "GUEST_" + Math.random().toString(36).substring(2, 9),
+        customer_phone: reqBody.buyerPhone || "9999999999",
       },
       order_meta: {
         return_url: `${reqBody.returnUrl}?order_id={order_id}`,
       },
+      order_tags: {
+        lockedMessageId: reqBody.lockedMessageId || "unknown"
+      }
     };
 
     console.log("Order meta:", payload.order_meta);
