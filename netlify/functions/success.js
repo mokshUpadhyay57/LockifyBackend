@@ -15,12 +15,16 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 exports.handler = async (event) => {
-  if (event.httpMethod !== "POST") return { statusCode: 405, body: "Method Not Allowed" };
+  if (event.httpMethod !== "POST")
+    return { statusCode: 405, body: "Method Not Allowed" };
 
   const rawBody = event.body;
   const ts = event.headers["x-webhook-timestamp"];
   const signature = event.headers["x-webhook-signature"];
-  const expected = crypto.createHmac("sha256", process.env.CF_API_SECRET).update(ts + rawBody).digest("base64");
+  const expected = crypto
+    .createHmac("sha256", process.env.CF_API_SECRET)
+    .update(ts + rawBody)
+    .digest("base64");
 
   if (expected !== signature) {
     console.error("❌ Signature Mismatch!");
@@ -38,8 +42,10 @@ exports.handler = async (event) => {
 
     try {
       if (!orderId) throw new Error("Missing orderId in webhook payload");
-      if (!lockedMessageId) throw new Error(`Missing lockedMessageId in order [${orderId}] tags`);
-      if (!buyerPhone) throw new Error(`Missing customer_phone in order [${orderId}]`);
+      if (!lockedMessageId)
+        throw new Error(`Missing lockedMessageId in order [${orderId}] tags`);
+      if (!buyerPhone)
+        throw new Error(`Missing customer_phone in order [${orderId}]`);
 
       await db.runTransaction(async (transaction) => {
         const orderRef = db.collection("orders").doc(orderId);
@@ -48,19 +54,55 @@ exports.handler = async (event) => {
 
         const msgRef = db.collection("lockedMessages").doc(lockedMessageId);
         const msgSnap = await transaction.get(msgRef);
-        if (!msgSnap.exists) throw new Error(`LockedMessage [${lockedMessageId}] not found`);
-        
+        if (!msgSnap.exists)
+          throw new Error(`LockedMessage [${lockedMessageId}] not found`);
+
         const creatorId = msgSnap.data().createdBy;
-        if (!creatorId) throw new Error(`CRITICAL: createdBy missing on message [${lockedMessageId}]`);
+        if (!creatorId)
+          throw new Error(
+            `CRITICAL: createdBy missing on message [${lockedMessageId}]`,
+          );
 
         const purchaseId = `${buyerPhone}_${lockedMessageId}`;
         const purchaseRef = db.collection("purchases").doc(purchaseId);
         const walletRef = db.collection("wallets").doc(creatorId);
 
-        transaction.set(orderRef, { status: "PAID", cfOrderId: order.cf_order_id, cfPaymentId: payment?.cf_payment_id, paidAt: admin.firestore.FieldValue.serverTimestamp(), creatorId, amount }, { merge: true });
-        transaction.set(purchaseRef, { lockedMessageId, buyerPhone, orderId, pricePaid: amount, purchasedAt: admin.firestore.FieldValue.serverTimestamp(), creatorId }, { merge: true });
-        transaction.update(msgRef, { purchasedCount: admin.firestore.FieldValue.increment(1) });
-        transaction.set(walletRef, { balance: admin.firestore.FieldValue.increment(amount), totalEarned: admin.firestore.FieldValue.increment(amount), updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        transaction.set(
+          orderRef,
+          {
+            status: "PAID",
+            cfOrderId: order.cf_order_id,
+            cfPaymentId: payment?.cf_payment_id,
+            paidAt: admin.firestore.FieldValue.serverTimestamp(),
+            creatorId,
+            amount,
+          },
+          { merge: true },
+        );
+        transaction.set(
+          purchaseRef,
+          {
+            lockedMessageId,
+            buyerPhone,
+            orderId,
+            pricePaid: amount,
+            purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+            creatorId,
+          },
+          { merge: true },
+        );
+        transaction.update(msgRef, {
+          purchasedCount: admin.firestore.FieldValue.increment(1),
+        });
+        transaction.set(
+          walletRef,
+          {
+            balance: admin.firestore.FieldValue.increment(amount),
+            totalEarned: admin.firestore.FieldValue.increment(amount),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true },
+        );
       });
 
       console.log(`[Webhook] ✅ SUCCESS: Order ${orderId} finalized.`);
