@@ -13,8 +13,6 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-
-// PRODUCTION GRADE: Restrict CORS to your domains
 const ALLOWED_ORIGINS = ["https://lockify.co.in", "https://zipind-57.web.app"];
 
 exports.handler = async (event) => {
@@ -32,7 +30,6 @@ exports.handler = async (event) => {
     const { order_id } = JSON.parse(event.body || "{}");
     if (!order_id) return { statusCode: 400, headers: corsHeaders, body: "Missing order_id" };
 
-    // 1. Verify with Cashfree
     const resp = await axios.get(`${process.env.CF_BASE_URL.replace(/\/$/, "")}/orders/${order_id}`, {
       headers: {
         "x-client-id": process.env.CF_API_KEY,
@@ -42,41 +39,50 @@ exports.handler = async (event) => {
     });
 
     const data = resp.data;
+    console.log(`[verifyPayment] Order ${order_id} status: ${data.order_status}`);
 
-    // 2. PRODUCTION GRADE: Use a Transaction for financial integrity
     if (data.order_status === "PAID") {
-      const lockedMessageId = data.order_tags?.lockedMessageId;
-      const buyerPhone = data.customer_details?.customer_phone;
+      const lockedMessageId = data.order_tags?.lockedMessageId || "unknown";
+      const buyerPhone = data.customer_details?.customer_phone || "9999999999";
       const amount = parseFloat(data.order_amount);
 
       await db.runTransaction(async (transaction) => {
         const orderRef = db.collection("orders").doc(order_id);
-        const purchaseRef = db.collection("purchases").doc(`${buyerPhone}_${lockedMessageId}`);
+        const purchaseId = `${buyerPhone}_${lockedMessageId}`;
+        const purchaseRef = db.collection("purchases").doc(purchaseId);
         
-        // Fetch message to find creator
         const msgRef = db.collection("lockedMessages").doc(lockedMessageId);
         const msgSnap = await transaction.get(msgRef);
         
-        if (!msgSnap.exists) throw new Error("Message not found");
-        const creatorId = msgSnap.data().creatorId;
+        if (!msgSnap.exists) throw new Error(`LockedMessage ${lockedMessageId} not found`);
+        const msgData = msgSnap.data();
+        const creatorId = msgData.creatorId;
         const walletRef = db.collection("wallets").doc(creatorId);
 
-        // Update Order
+        // 1. Update Order
         transaction.set(orderRef, {
           status: "PAID",
           paidAt: admin.firestore.FieldValue.serverTimestamp(),
-          creatorId
+          creatorId,
+          amount: amount
         }, { merge: true });
 
-        // Update Purchase (Idempotent)
+        // 2. Update Purchase (Matches App Schema)
         transaction.set(purchaseRef, {
           lockedMessageId,
           buyerPhone,
           orderId: order_id,
-          grantedAt: admin.firestore.FieldValue.serverTimestamp(),
+          pricePaid: amount,
+          purchasedAt: admin.firestore.FieldValue.serverTimestamp(), // Match App
+          creatorId: creatorId
         }, { merge: true });
 
-        // Update Creator Wallet
+        // 3. Increment Message Purchased Count
+        transaction.update(msgRef, {
+          purchasedCount: admin.firestore.FieldValue.increment(1)
+        });
+
+        // 4. Update Creator Wallet
         transaction.set(walletRef, {
           balance: admin.firestore.FieldValue.increment(amount),
           totalEarned: admin.firestore.FieldValue.increment(amount),
@@ -84,7 +90,7 @@ exports.handler = async (event) => {
         }, { merge: true });
       });
 
-      console.log(`[verifyPayment] ✅ Success: Order ${order_id} processed & Wallet updated.`);
+      console.log(`[verifyPayment] ✅ SUCCESS: Tables created & Wallet updated for ${order_id}`);
     }
 
     return { statusCode: 200, headers: corsHeaders, body: JSON.stringify(data) };

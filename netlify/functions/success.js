@@ -22,7 +22,6 @@ exports.handler = async (event) => {
   const signature = event.headers["x-webhook-signature"];
   const expected = crypto.createHmac("sha256", process.env.CF_API_SECRET).update(ts + rawBody).digest("base64");
 
-  // PRODUCTION GRADE: Strict Signature Verification
   if (expected !== signature) {
     console.error("❌ Signature Mismatch! Rejecting Webhook.");
     return { statusCode: 401, body: "Invalid signature" };
@@ -41,24 +40,25 @@ exports.handler = async (event) => {
       await db.runTransaction(async (transaction) => {
         const orderRef = db.collection("orders").doc(orderId);
         
-        // 1. Check if order is already marked PAID to prevent double wallet credits
+        // 1. Prevent Double Credit
         const orderSnap = await transaction.get(orderRef);
         if (orderSnap.exists && orderSnap.data().status === "PAID") {
           console.log(`[Webhook] Order ${orderId} already processed. Skipping.`);
           return;
         }
 
-        const purchaseRef = db.collection("purchases").doc(`${buyerPhone}_${lockedMessageId}`);
+        const purchaseId = `${buyerPhone}_${lockedMessageId}`;
+        const purchaseRef = db.collection("purchases").doc(purchaseId);
         
-        // 2. Fetch Message/Creator
+        // 2. Fetch Creator Info
         const msgRef = db.collection("lockedMessages").doc(lockedMessageId);
         const msgSnap = await transaction.get(msgRef);
-        if (!msgSnap.exists) throw new Error("Message not found");
-        
-        const creatorId = msgSnap.data().creatorId;
+        if (!msgSnap.exists) throw new Error(`LockedMessage ${lockedMessageId} not found`);
+        const msgData = msgSnap.data();
+        const creatorId = msgData.creatorId;
         const walletRef = db.collection("wallets").doc(creatorId);
 
-        // 3. Update Order
+        // 3. Mark Order as PAID
         transaction.set(orderRef, {
           status: "PAID",
           cfOrderId: order.cf_order_id,
@@ -67,15 +67,22 @@ exports.handler = async (event) => {
           creatorId
         }, { merge: true });
 
-        // 4. Update Purchase
+        // 4. Record Purchase (Match App Schema)
         transaction.set(purchaseRef, {
           lockedMessageId,
           buyerPhone,
-          orderId,
-          grantedAt: admin.firestore.FieldValue.serverTimestamp(),
+          orderId: orderId,
+          pricePaid: amount,
+          purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+          creatorId: creatorId
         }, { merge: true });
 
-        // 5. Update Creator Wallet
+        // 5. Update Stat Counter
+        transaction.update(msgRef, {
+          purchasedCount: admin.firestore.FieldValue.increment(1)
+        });
+
+        // 6. Credit Wallet
         transaction.set(walletRef, {
           balance: admin.firestore.FieldValue.increment(amount),
           totalEarned: admin.firestore.FieldValue.increment(amount),
@@ -83,7 +90,7 @@ exports.handler = async (event) => {
         }, { merge: true });
       });
 
-      console.log(`[Webhook] ✅ Order ${orderId} finalized via transaction.`);
+      console.log(`[Webhook] ✅ Successfully finalized Order ${orderId} & Purchse table.`);
     } catch (err) {
       console.error("[Webhook] ❌ Transaction Error:", err.message);
       return { statusCode: 500, body: "Transaction failed" };
