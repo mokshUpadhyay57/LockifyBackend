@@ -12,10 +12,7 @@ if (!admin.apps.length) {
   });
 }
 
-const ALLOWED_ORIGINS = [
-  "https://lockify.co.in",
-  "https://zipind-57.web.app",
-];
+const ALLOWED_ORIGINS = ["https://lockify.co.in", "https://zipind-57.web.app"];
 
 const keepAliveAgent = new https.Agent({
   keepAlive: true,
@@ -47,11 +44,13 @@ function buildCorsHeaders(event) {
 }
 
 function getPayoutConfig() {
-  const clientId = process.env.CF_PAYOUT_CLIENT_ID || process.env.CF_API_KEY;
-  const clientSecret =
-    process.env.CF_PAYOUT_CLIENT_SECRET || process.env.CF_API_SECRET;
-  const authUrl = process.env.CF_PAYOUT_AUTH_URL || "https://payout-gamma.cashfree.com/payout/v1/authorize"; 
-  const baseUrl = process.env.CF_PAYOUT_BASE_URL || "https://sandbox.cashfree.com/payout";
+  const clientId = process.env.CF_API_KEY;
+  const clientSecret = process.env.CF_API_SECRET;
+  const authBaseUrl =
+    process.env.CF_PAYOUT_AUTH_URL ||
+    "https://payout-gamma.cashfree.com/payout/v1";
+  const baseUrl =
+    process.env.CF_PAYOUT_BASE_URL || " https://sandbox.cashfree.com/payoutt";
 
   if (!clientId || !clientSecret) {
     throw new Error("Cashfree payout credentials are not configured");
@@ -60,7 +59,7 @@ function getPayoutConfig() {
   return {
     clientId,
     clientSecret,
-    authUrl: authUrl.replace(/\/$/, ""),
+    authBaseUrl: authBaseUrl.replace(/\/$/, ""),
     baseUrl: baseUrl.replace(/\/$/, ""),
   };
 }
@@ -77,12 +76,16 @@ async function verifyFirebaseToken(event) {
 }
 
 async function getAuthToken(config) {
-  const response = await client.post(`${config.authUrl}/authorize`, {}, {
-    headers: {
-      "x-client-id": config.clientId,
-      "x-client-secret": config.clientSecret,
+  const response = await client.post(
+    `${config.authBaseUrl}/authorize`,
+    {},
+    {
+      headers: {
+        "x-client-id": config.clientId,
+        "x-client-secret": config.clientSecret,
+      },
     },
-  });
+  );
 
   const token = response.data?.data?.token;
   if (!token) {
@@ -97,9 +100,13 @@ async function getAuthToken(config) {
 }
 
 async function verifyPayoutToken(config, token) {
-  await client.post(`${config.authUrl}/verifyToken`, {}, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  await client.post(
+    `${config.authBaseUrl}/verifyToken`,
+    {},
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
 }
 
 exports.handler = async (event) => {
@@ -125,16 +132,20 @@ exports.handler = async (event) => {
 
     await verifyPayoutToken(config, token);
 
-    const response = await client.post(`${config.baseUrl}/beneficiary`, payload, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "x-client-id": config.clientId,
-        "x-client-secret": config.clientSecret,
-        "x-api-version": "2024-01-01",
-        "x-request-id": `req-${Date.now()}`,
+    const response = await client.post(
+      `${config.baseUrl}/beneficiary`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          "x-client-id": config.clientId,
+          "x-client-secret": config.clientSecret,
+          "x-api-version": "2024-01-01",
+          "x-request-id": `req-${Date.now()}`,
+        },
       },
-    });
+    );
 
     console.log("addBeneficie response:", {
       uid,
@@ -152,7 +163,8 @@ exports.handler = async (event) => {
       err.message === "No token provided" || err.code === "auth/argument-error"
         ? 401
         : 500;
-    const errorMsg = err.response?.data?.message || err.message || "Unknown error";
+    const errorMsg =
+      err.response?.data?.message || err.message || "Unknown error";
 
     console.error("addBeneficie error:", err.response?.data || errorMsg);
 
