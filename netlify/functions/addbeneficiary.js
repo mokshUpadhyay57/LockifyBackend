@@ -50,11 +50,8 @@ function getPayoutConfig() {
   const clientId = process.env.CF_PAYOUT_CLIENT_ID || process.env.CF_API_KEY;
   const clientSecret =
     process.env.CF_PAYOUT_CLIENT_SECRET || process.env.CF_API_SECRET;
-  const authUrl =
-    process.env.CF_PAYOUT_AUTH_URL ||
-    "https://payout-gamma.cashfree.com/payout/v1";
-  const baseUrl =
-    process.env.CF_PAYOUT_BASE_URL || "https://sandbox.cashfree.com/payout";
+  const authUrl = process.env.CF_PAYOUT_AUTH_URL || "https://payout-gamma.cashfree.com/payout/v1/authorize"; 
+  const baseUrl = process.env.CF_PAYOUT_BASE_URL || "https://sandbox.cashfree.com/payout";
 
   if (!clientId || !clientSecret) {
     throw new Error("Cashfree payout credentials are not configured");
