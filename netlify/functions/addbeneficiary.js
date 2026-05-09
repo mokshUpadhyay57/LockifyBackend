@@ -101,7 +101,6 @@ exports.handler = async (event) => {
           "x-client-id": config.clientId,
           "x-client-secret": config.clientSecret,
           "x-api-version": "2024-01-01",
-          "x-request-id": `req-${Date.now()}`,
         },
       },
     );
