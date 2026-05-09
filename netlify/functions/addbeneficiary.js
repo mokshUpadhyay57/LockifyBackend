@@ -45,7 +45,7 @@ function buildCorsHeaders(event) {
 function getPayoutConfig() {
   const clientId =  process.env.CF_API_KEY;
   const clientSecret = process.env.CF_API_SECRET;
-  const baseUrl = process.env.CF_PAYOUT_BASE_URL || "https://sandbox.cashfree.com";
+  const baseUrl = process.env.CF_PAYOUT_BASE_URL || "https://sandbox.cashfree.com/payout";
 
   if (!clientId || !clientSecret) {
     throw new Error("Cashfree payout credentials are not configured");
