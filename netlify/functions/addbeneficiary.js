@@ -54,7 +54,7 @@ function getPayoutConfig() {
   return {
     clientId: clientId.trim(),
     clientSecret: clientSecret.trim(),
-    baseUrl: baseUrl.trim().replace(/\/$/, ""),
+    baseUrl: baseUrl.trim(),
   };
 }
 
