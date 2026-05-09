@@ -42,9 +42,9 @@ function buildCorsHeaders(event) {
   };
 }
 
-function getPayoutConfig() {
-  const clientId =  process.env.CF_API_KEY;
-  const clientSecret = process.env.CF_API_SECRET;
+function getPayoutConfig() { 
+  const clientId = process.env.CF_API_KEY || "CF10622351D7VKG7HISMFC739UQD50";
+  const clientSecret = process.env.CF_API_SECRET || "cfsk_ma_test_baa090f35ffc142ac15407a4016cf876_c4b58b15"; ;
   const baseUrl = process.env.CF_PAYOUT_BASE_URL || "https://sandbox.cashfree.com/payout";
 
   if (!clientId || !clientSecret) {
