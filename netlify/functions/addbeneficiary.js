@@ -16,13 +16,12 @@ const ALLOWED_ORIGINS = ["https://lockify.co.in", "https://zipind-57.web.app"];
 
 const keepAliveAgent = new https.Agent({
   keepAlive: true,
-  maxSockets: 20,
+  maxSockets: 10,
   timeout: 10000,
 });
 
 const client = axios.create({
   httpsAgent: keepAliveAgent,
-  timeout: 15000,
   headers: { Connection: "keep-alive" },
 });
 
@@ -86,7 +85,6 @@ exports.handler = async (event) => {
   }
 
   try {
-    // const uid = await verifyFirebaseToken(event);
     const payload = JSON.parse(event.body || "{}");
     const config = getPayoutConfig();
 
@@ -105,7 +103,6 @@ exports.handler = async (event) => {
     );
 
     console.log("addBeneficiary response:", {
-      uid,
       beneficiaryId: payload.beneficiary_id,
       status: response.status,
     });
@@ -116,14 +113,10 @@ exports.handler = async (event) => {
       body: JSON.stringify(response.data),
     };
   } catch (err) {
-    const statusCode = 
-      err.message === "No token provided" || err.code === "auth/argument-error"
-        ? 401
-        : err.response?.status || 500;
-    const errorMsg =
-      err.response?.data?.message || err.message || "Unknown error";
+    const statusCode = err.response?.status || 500;
+    const errorMsg = err.response?.data?.message || err.message || "Unknown error";
 
-    console.error("addBeneficiary error: and code", err.response?.data || errorMsg, err.code || "No error code");
+    console.error("addBeneficiary error: and StatusCode", err.response?.data || err.message, statusCode);
 
     return {
       statusCode,
