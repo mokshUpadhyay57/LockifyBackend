@@ -45,7 +45,7 @@ function buildCorsHeaders(event) {
 function getPayoutConfig() {
   const clientId =  process.env.CF_API_KEY;
   const clientSecret = process.env.CF_API_SECRET;
-  const baseUrl = process.env.CF_PAYOUT_BASE_URL || "https://sandbox.cashfree.com/payout";
+  const baseUrl = process.env.CF_PAYOUT_BASE_URL || "https://sandbox.cashfree.com";
 
   if (!clientId || !clientSecret) {
     throw new Error("Cashfree payout credentials are not configured");
@@ -88,6 +88,10 @@ exports.handler = async (event) => {
     const payload = JSON.parse(event.body || "{}");
     const config = getPayoutConfig();
 
+    console.log("Calling Cashfree...");
+    console.log("Payload:", payload);
+    console.log("URL:", `${config.baseUrl}/beneficiary`);
+
     const response = await client.post(
       `${config.baseUrl}/beneficiary`,
       payload,
@@ -116,7 +120,14 @@ exports.handler = async (event) => {
     const statusCode = err.response?.status || 500;
     const errorMsg = err.response?.data?.message || err.message || "Unknown error";
 
-    console.error("addBeneficiary error: and StatusCode", err.response?.data || err.message, statusCode);
+    console.error("FULL ERROR:", {
+      message: err.message,
+      code: err.code,
+      status: err.response?.status,
+      data: err.response?.data,
+      headers: err.response?.headers,
+      url: err.config?.url,
+    });
 
     return {
       statusCode,
