@@ -87,6 +87,7 @@ async function getAuthToken(config) {
     },
   );
 
+  console.log("Cashfree /authorize response:", response.data);
   const token = response.data?.data?.token;
   if (!token) {
     throw new Error(
@@ -147,7 +148,7 @@ exports.handler = async (event) => {
       },
     );
 
-    console.log("addBeneficie response:", {
+    console.log("addBeneficiery response:", {
       uid,
       beneficiaryId: payload.beneficiary_id,
       status: response.status,
@@ -166,7 +167,7 @@ exports.handler = async (event) => {
     const errorMsg =
       err.response?.data?.message || err.message || "Unknown error";
 
-    console.error("addBeneficie error:", err.response?.data || errorMsg);
+    console.error("addBeneficiery error:", err.response?.data || errorMsg);
 
     return {
       statusCode,
