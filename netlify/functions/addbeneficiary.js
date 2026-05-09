@@ -44,23 +44,18 @@ function buildCorsHeaders(event) {
 }
 
 function getPayoutConfig() {
-  const clientId = process.env.CF_API_KEY;
+  const clientId =  process.env.CF_API_KEY;
   const clientSecret = process.env.CF_API_SECRET;
-  const authBaseUrl =
-    process.env.CF_PAYOUT_AUTH_URL ||
-    "https://payout-gamma.cashfree.com/payout/v1";
-  const baseUrl =
-    process.env.CF_PAYOUT_BASE_URL || " https://sandbox.cashfree.com/payout";
+  const baseUrl = process.env.CF_PAYOUT_BASE_URL || "https://sandbox.cashfree.com/payout";
 
   if (!clientId || !clientSecret) {
     throw new Error("Cashfree payout credentials are not configured");
   }
 
   return {
-    clientId,
-    clientSecret,
-    authBaseUrl: authBaseUrl.replace(/\/$/, ""),
-    baseUrl: baseUrl.replace(/\/$/, ""),
+    clientId: clientId.trim(),
+    clientSecret: clientSecret.trim(),
+    baseUrl: baseUrl.trim().replace(/\/$/, ""),
   };
 }
 
@@ -73,41 +68,6 @@ async function verifyFirebaseToken(event) {
   const idToken = authHeader.replace("Bearer ", "");
   const decodedToken = await admin.auth().verifyIdToken(idToken);
   return decodedToken.uid;
-}
-
-async function getAuthToken(config) {
-  const response = await client.post(
-    `${config.authBaseUrl}/authorize`,
-    {},
-    {
-      headers: {
-        "x-client-id": config.clientId,
-        "x-client-secret": config.clientSecret,
-      },
-    },
-  );
-
-  console.log("Cashfree /authorize response:", response.data);
-  const token = response.data?.data?.token;
-  if (!token) {
-    throw new Error(
-      `Invalid response from Cashfree /authorize: ${JSON.stringify(
-        response.data,
-      )}`,
-    );
-  }
-
-  return token;
-}
-
-async function verifyPayoutToken(config, token) {
-  await client.post(
-    `${config.authBaseUrl}/verifyToken`,
-    {},
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
 }
 
 exports.handler = async (event) => {
@@ -129,16 +89,12 @@ exports.handler = async (event) => {
     const uid = await verifyFirebaseToken(event);
     const payload = JSON.parse(event.body || "{}");
     const config = getPayoutConfig();
-    const token = await getAuthToken(config);
-
-    await verifyPayoutToken(config, token);
 
     const response = await client.post(
       `${config.baseUrl}/beneficiary`,
       payload,
       {
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
           "x-client-id": config.clientId,
           "x-client-secret": config.clientSecret,
@@ -148,14 +104,14 @@ exports.handler = async (event) => {
       },
     );
 
-    console.log("addBeneficiery response:", {
+    console.log("addBeneficiary response:", {
       uid,
       beneficiaryId: payload.beneficiary_id,
       status: response.status,
     });
 
     return {
-      statusCode: 200,
+      statusCode: response.status === 201 ? 200 : response.status,
       headers: corsHeaders,
       body: JSON.stringify(response.data),
     };
@@ -163,11 +119,11 @@ exports.handler = async (event) => {
     const statusCode =
       err.message === "No token provided" || err.code === "auth/argument-error"
         ? 401
-        : 500;
+        : err.response?.status || 500;
     const errorMsg =
       err.response?.data?.message || err.message || "Unknown error";
 
-    console.error("addBeneficiery error:", err.response?.data || errorMsg);
+    console.error("addBeneficiary error:", err.response?.data || errorMsg);
 
     return {
       statusCode,
