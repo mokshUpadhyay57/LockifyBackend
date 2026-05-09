@@ -86,7 +86,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const uid = await verifyFirebaseToken(event);
+    // const uid = await verifyFirebaseToken(event);
     const payload = JSON.parse(event.body || "{}");
     const config = getPayoutConfig();
 
