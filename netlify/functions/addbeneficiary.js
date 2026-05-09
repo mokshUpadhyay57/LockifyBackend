@@ -116,14 +116,14 @@ exports.handler = async (event) => {
       body: JSON.stringify(response.data),
     };
   } catch (err) {
-    const statusCode =
+    const statusCode = 
       err.message === "No token provided" || err.code === "auth/argument-error"
         ? 401
         : err.response?.status || 500;
     const errorMsg =
       err.response?.data?.message || err.message || "Unknown error";
 
-    console.error("addBeneficiary error:", err.response?.data || errorMsg);
+    console.error("addBeneficiary error: and code", err.response?.data || errorMsg, err.code || "No error code");
 
     return {
       statusCode,
